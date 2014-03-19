@@ -12,6 +12,19 @@
 #define COMMAND_ALS_OD      (1<<4)
 #define COMMAND_PROX_RDY    (1<<5)
 
+#define PIN_LED             (11)
+#define PIN_DIAG_LED        (13)
+
+#define PIN_BTN_CLOSED      (4)
+#define PIN_BTN_OPENED      (5)
+
+typedef struct {
+  unsigned int openedthres;
+  unsigned int closedthres;
+} State;
+
+State _state;
+
 /**
   Asks the VNCL4000 to perform an on-demand proximity reading, returning
   the proximity value
@@ -57,6 +70,9 @@ byte readReg1(byte r) {
 }
 
 void setup() {
+  _state.openedthres = 0;
+  _state.closedthres = 0;
+
   Serial.begin(9600);
   Wire.begin();
 
@@ -69,17 +85,59 @@ void setup() {
   writeReg(PROX_MOD_ADDR, 0x81);
   writeReg(IR_CURRENT_ADDR, 10);
 
-  pinMode(5, OUTPUT);
+  pinMode(PIN_LED, OUTPUT);
+  pinMode(PIN_DIAG_LED, OUTPUT);
+
+  // input button, pulled high
+  pinMode(PIN_BTN_CLOSED, INPUT);
+  digitalWrite(PIN_BTN_CLOSED, HIGH);
+
+  pinMode(PIN_BTN_OPENED, INPUT);
+  digitalWrite(PIN_BTN_OPENED, HIGH);
 }
 
 void loop() {
+  Serial.print("Thresholds: opened=");
+  Serial.print(_state.openedthres);
+  Serial.print(" closed=");
+  Serial.print(_state.closedthres);
+  Serial.println();
   Serial.print("Proximity data:");
   unsigned int prox = readProximity();
   Serial.print(prox, DEC);
-  Serial.print(" ");
-  Serial.print(prox);
-  Serial.print(" ");
+  Serial.println();
   Serial.println();
 
-  analogWrite(5, map(prox, 2500, 30000, 0, 255));
+  bool opendown = digitalRead(PIN_BTN_OPENED) == 0;
+  bool closedown = digitalRead(PIN_BTN_CLOSED) == 0;
+
+  if (opendown || closedown) {
+    digitalWrite(PIN_DIAG_LED, HIGH);
+
+    /**
+      When opened btn is pressed the proximity value is read into openedthres
+      When closed btn is pressed the proximity value is read after 3 seconds
+      into closedthres
+      */
+    if (opendown) _state.openedthres = prox;
+    if (closedown) {
+      delay(3000);
+      _state.closedthres = readProximity();
+    }
+
+    // debounce
+    delay(100);
+  } else digitalWrite(PIN_DIAG_LED, LOW);
+
+  if (_state.openedthres > 0 && _state.closedthres > 0) {
+    unsigned int range = _state.closedthres - _state.openedthres;
+    if (prox < 0.7*range+_state.openedthres) {
+      digitalWrite(PIN_LED, HIGH);
+      // if it is on, make it stay on for at least 3s to avoid flashing
+      delay(200);
+    } if (prox > 0.75*range+_state.openedthres) {
+      digitalWrite(PIN_LED, LOW);
+      delay(200);
+    }
+  }
 }
