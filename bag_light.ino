@@ -79,9 +79,10 @@ void setup() {
   byte prodid = readReg1(PROD_ADDR);
   if (prodid != 0x11) {
     Serial.println("!! Product ID mistmatch !!");
+  } else {
+    Serial.println("VNCL4000 found");
   }
 
-  Serial.println("VNCL4000 found");
   writeReg(PROX_MOD_ADDR, 0x81);
   writeReg(IR_CURRENT_ADDR, 10);
 
@@ -131,13 +132,14 @@ void loop() {
 
   if (_state.openedthres > 0 && _state.closedthres > 0) {
     unsigned int range = _state.closedthres - _state.openedthres;
+
+    // some hysteresis to avoid flicking due to thresholding
     if (prox < 0.7*range+_state.openedthres) {
       digitalWrite(PIN_LED, HIGH);
-      // if it is on, make it stay on for at least 3s to avoid flashing
-      delay(200);
+      delay(100);
     } if (prox > 0.75*range+_state.openedthres) {
       digitalWrite(PIN_LED, LOW);
-      delay(200);
+      delay(100);
     }
   }
 }
